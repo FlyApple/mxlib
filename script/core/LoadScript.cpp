@@ -14,25 +14,24 @@
 //
 namespace MX{	
 
-/*
 
 // 返回行数量
-long	LoadScriptLines::AppendBytes(unsigned char* bytes, long length, bool eof)
+MXScriptInteger	LoadScriptLines::AppendBytes(unsigned char* bytes, MXScriptInteger length, MXScriptBoolean eof)
 {
-	long		result			= 0;
-	long		temp_length		= m_tempOffset + length;
-	if((long)m_tempBytes.size() < temp_length)
+	MXScriptInteger		result			= 0;
+	MXScriptInteger		temp_length		= m_tempOffset + length;
+	if((MXScriptInteger)m_tempBytes.size() < temp_length)
 	{ m_tempBytes.resize(temp_length); }
 
 	//末尾追加字节
-	m_tempLength				= temp_length;
+	m_tempLength		= temp_length;
 	memcpy(&m_tempBytes[m_tempOffset], bytes, length);
 
 	//
-	long		lines			= 0;
+	MXScriptInteger		lines			= 0;
 	while (true)
 	{
-		long	parse_bytes		= this->ParseBytes(eof);
+		MXScriptInteger	parse_bytes		= this->ParseBytes(eof);
 		if(parse_bytes < 0)
 		{
 			result = -1;
@@ -51,12 +50,12 @@ long	LoadScriptLines::AppendBytes(unsigned char* bytes, long length, bool eof)
 	return result;
 }
 
-long	LoadScriptLines::ParseBytes(bool eof)
+MXScriptInteger	LoadScriptLines::ParseBytes(MXScriptBoolean eof)
 {
-	long		result		= 0;
-	long		length		= m_tempLength;
-	long		offset		= m_tempOffset;
-	bool		new_line	= false;
+	MXScriptInteger		result		= 0;
+	MXScriptInteger		length		= m_tempLength;
+	MXScriptInteger		offset		= m_tempOffset;
+	MXScriptBoolean		new_line	= false;
 	if(length == 0){ return result; }
 
 	//
@@ -104,12 +103,9 @@ long	LoadScriptLines::ParseBytes(bool eof)
 	//
 	if(eof == true && new_line == false)
 	{
-		// 向末尾增加4个字节的结束符,兼容ANSI,UNICODE,UTF8
-		m_tempBytes.resize(m_tempBytes.size() + 4);
-		m_tempBytes[offset + 0] = 0;
-		m_tempBytes[offset + 1] = 0;
-		m_tempBytes[offset + 2] = 0;
-		m_tempBytes[offset + 3] = 0;
+		// 向末尾增加4个字节的结束符,兼容ANSI,UNICODE,UTF8,UTF32
+		m_tempBytes.resize(m_tempBytes.size() + this->SizeOfChar());
+		memset(&m_tempBytes[offset], 0, (MXScriptInteger)m_tempBytes.size() - offset);
 
 		if(!this->AppendLine(&m_tempBytes[0], offset))
 		{
@@ -126,79 +122,52 @@ long	LoadScriptLines::ParseBytes(bool eof)
 }
 
 
-
 //
-bool		LoadScriptStream::LineText(long row, __loadscript_out ScriptString& text)
+MXScriptBoolean	LoadScriptLinesEx::AppendLine(void* bytes, MXScriptInteger length)
 {
-	if(m_pLines == NULL){ return false; }
-
-	//
-	if(this->m_Type == LoadScriptType_Ansi)
+#if defined(_MSC_VER)
+	switch(m_Type)
 	{
-		ScriptStringA		textA;
-		if(!m_pLines->LineText(row, textA)){ return false; }
+		case LoadScriptType_Ansi:
+			{ 
+				MXScriptInteger	text_lengthW = length;
+				wchar_t*		text_bufferW = new wchar_t[text_lengthW + 1];
+				text_lengthW = MultiByteToWideChar(CP_ACP, 0, (LPCSTR)bytes, length, text_bufferW, text_lengthW);
+				text_bufferW[text_lengthW] = '\0';
+				
+				this->AppendLine(text_bufferW);
+				delete	[] text_bufferW;
+				break;
+			}
+		case LoadScriptType_UTF16LE:
+			{ 
+				MXScriptInteger	text_lengthW = length / sizeof(wchar_t);
+				wchar_t*		text_bufferW = new wchar_t[text_lengthW + 1];
+				memcpy(text_bufferW, bytes, length);
+				text_bufferW[text_lengthW] = '\0';
 
-#ifdef _UNICODE
-		//进行转换
-		long			text_lengthW = (textA.length() + 1) * sizeof(wchar_t);
-		wchar_t*		text_bufferW = new wchar_t[text_lengthW];
-		ZeroMemory(text_bufferW, text_lengthW);
-		text_lengthW = MultiByteToWideChar(CP_ACP, 0, textA.c_str(), textA.length(), text_bufferW, text_lengthW);
-		text	= text_bufferW;
-
-		delete	text_bufferW;
+				this->AppendLine(text_bufferW);
+				delete	[] text_bufferW;
+				break;
+			}
+		case LoadScriptType_UTF8LE:
+			{ 
+				MXScriptInteger	text_lengthW = length;
+				wchar_t*		text_bufferW = new wchar_t[text_lengthW + 1];
+				text_lengthW = MultiByteToWideChar(CP_UTF8, 0, (LPCSTR)bytes, length, text_bufferW, text_lengthW);
+				text_bufferW[text_lengthW] = '\0';
+				
+				this->AppendLine(text_bufferW);
+				delete	[] text_bufferW;
+			}
+		case LoadScriptType_UTF32LE:
+			{ return false; } //UTF32 原生不支持
+		default:
+			{ return false; }
+	}
 #else
-		text	= textA;
+	return false;
 #endif
-	}
-	else if(this->m_Type == LoadScriptType_Unicode)
-	{
-		ScriptStringW		textW;
-		if(!m_pLines->LineText(row, textW)){ return false; }
-#ifdef _UNICODE
-		text	= textW;
-#else
-		//进行转换
-		long			text_lengthA = (textW.length() + 1) * sizeof(wchar_t);
-		char*			text_bufferA = new char[text_lengthA];
-		ZeroMemory(text_bufferA, text_lengthA);
-		text_lengthA = WideCharToMultiByte(CP_ACP, 0, textW.c_str(), textW.length(), text_bufferA, text_lengthA, NULL, NULL);
-		text	= text_bufferA;
-
-		delete	text_bufferA;
-#endif
-	}
-	else if(this->m_Type == LoadScriptType_UTF8)
-	{
-		ScriptStringA		textA;
-		if(!m_pLines->LineText(row, textA)){ return false; }
-
-		//进行UTF8转UNICODE
-		long			text_lengthW = (textA.length() + 1) * sizeof(wchar_t);
-		wchar_t*		text_bufferW = new wchar_t[text_lengthW];
-		ZeroMemory(text_bufferW, text_lengthW);
-		text_lengthW = MultiByteToWideChar(CP_UTF8, 0, textA.c_str(), textA.length(), text_bufferW, text_lengthW);
-
-#ifdef _UNICODE
-		text	= text_bufferW;
-#else
-		//进行UNICODE转ANSI
-		long			text_lengthA = (text_lengthW + 1) * sizeof(wchar_t);
-		char*			text_bufferA = new char[text_lengthA];
-		ZeroMemory(text_bufferA, text_lengthA);
-		text_lengthA = WideCharToMultiByte(CP_ACP, 0, text_bufferW, text_lengthW, text_bufferA, text_lengthA, NULL, NULL);
-		text	= text_bufferA;
-
-		delete	text_bufferA;
-#endif
-		delete	text_bufferW;
-	}
-	else
-	{
-		return false;
-	}
-
-	//
 	return true;
 }
 
@@ -211,23 +180,12 @@ LoadScriptFromFile::LoadScriptFromFile()
 	m_stringFileName	= _T("");
 }
 
-LoadScriptFromFile::LoadScriptFromFile(const ScriptString& stringFileName)
-{
-	m_pFile				= NULL;
-	m_nFileLength		= 0;
-	m_stringFileName	= stringFileName;
-}
-
 LoadScriptFromFile::~LoadScriptFromFile()
 {
-	if(m_pFile)
-	{
-		fclose(m_pFile);
-		m_pFile = NULL;
-	}
+	this->Close();
 }
 
-bool	LoadScriptFromFile::Load(const ScriptString& stringFileName)
+bool	LoadScriptFromFile::Load(const MXScriptStringT& stringFileName)
 {
 	m_stringFileName = stringFileName;
 
@@ -237,11 +195,15 @@ bool	LoadScriptFromFile::Load(const ScriptString& stringFileName)
 
 bool	LoadScriptFromFile::Load()
 {
+#if defined(_MSC_VER)
 #ifdef _UNICODE
 	_wfopen_s(&m_pFile, m_stringFileName.c_str(), _T("rb"));
 #else
 	fopen_s(&m_pFile, m_stringFileName.c_str(), _T("rb"));
 #endif 
+#else
+	m_pFile = fopen(m_stringFileName.c_str(), "rb");
+#endif
 	if(m_pFile == NULL)
 	{
 		return false;
@@ -280,14 +242,10 @@ bool	LoadScriptFromFile::Load()
 	//
 	if(m_Type == LoadScriptType_Unknow)
 	{ return false; }
-	else if(m_Type == LoadScriptType_Unicode)
-	{
-		m_pLines	= new LoadScriptLinesW();
-	}
-	else
-	{
-		m_pLines	= new LoadScriptLinesA();
-	}
+
+	//
+	if(m_pLines == NULL)
+	{ m_pLines = new LoadScriptLinesEx(m_Type); }
 
 	//
 	return LoadScriptStream::Load();
@@ -295,131 +253,207 @@ bool	LoadScriptFromFile::Load()
 
 bool		LoadScriptFromFile::LoadImpl()
 {
-	if(m_pFile == NULL || m_pLines == NULL){ return false; }
+	if(m_pFile == NULL || m_pLines == NULL)
+	{ return false; }
+
+	m_pLines->Clear();
+	m_pLines->Type(m_Type);
+
+	if(!this->ReadImpl())
+	{ return false; }
+
+	return true;
+}
+
+MXScriptInteger64	LoadScriptFromFile::ReadImpl()
+{
+	//
+	unsigned char	temp_buffer[4096]	= {0};
+	int				temp_length			= 0;
 
 	//
-	unsigned char	temp_buffer[512]	= {0};
-	unsigned long	temp_length			= 0;
-
-	//
-	long	read_total	= 0;
-	bool	read_eof	= 0;
-	long	read_lines	= 0;
+	MXScriptInteger64	read_total	= 0;
+	MXScriptBoolean		read_eof	= 0;
+	MXScriptInteger		read_lines	= 0;
 	while (read_total < m_nLength)
 	{
-		temp_length = fread(temp_buffer, 1, 100 * m_pLines->SizeOfChar(), m_pFile);
+		temp_length = fread(temp_buffer, 1, 1000 * m_pLines->SizeOfChar(), m_pFile);
+
 		if(read_total + temp_length >= m_nLength)
 		{ read_eof = true; }
 
-		long line_count = m_pLines->AppendBytes(temp_buffer, (long)temp_length, read_eof);
+		MXScriptInteger line_count = m_pLines->AppendBytes(temp_buffer, (long)temp_length, read_eof);
 		if(line_count < 0){ return false; }
 		
 		read_lines += line_count;
 		read_total += temp_length;
 	}
+
+	return read_total;
+}
+
+
+//
+MXScriptBoolean		LoadScriptCacheLineTH::ParseColumnText()
+{
+	std::vector<MXScriptStringW> values;
+	if(!this->ParseTextImpl(values))
+	{
+		m_stringText		= L"";
+		m_lColumnCount		= 0;
+		return false;
+	}
+
+	m_stringText			= L"";
+	m_lColumnCount			= (MXScriptInteger)values.size();
+	m_ColumnNames.resize(m_lColumnCount);
+
+	m_lFirstRow				= m_lRow;
+	m_lRow ++;
+
+	//检测是否有空的列名
+	//设置默认列名
+	for (int i = 0; i < m_lColumnCount; i++)
+	{
+		MXScriptCharA	name[50] = {0, };
+
+		if(values[i].empty())
+		{
+			sprintf_s(name, "[NULL_%04d]", i);
+			m_ColumnNames[i] = name;
+		}
+		else
+		{
+			MXScriptStringW			textW = values[i];
+
+#if defined(_MSC_VER)
+			//进行UNICODE转ANSI
+			MXScriptInteger			text_lengthA = WideCharToMultiByte(CP_UTF8, 0, textW.c_str(), -1, NULL, 0, NULL, NULL);
+			
+			text_lengthA = WideCharToMultiByte(CP_ACP, 0, textW.c_str(), -1, 
+				name, min(text_lengthA, 50 -1), NULL, NULL);
+
+			//
+			m_ColumnNames[i] = name;
+#else
+			//进行UNICODE转UTF8
+			return false;
+#endif
+		}
+	}
 	return true;
 }
 
+
 //
-LoadScriptValue::operator bool()
-{
-	return this->ToBool();
-}
-
-LoadScriptValue::operator int()
-{
-	return this->ToSignedLongDec();
-}
-
-LoadScriptValue::operator long()
-{
-	return this->ToSignedLongDec();
-}
-
-LoadScriptValue::operator float()
-{
-	return this->ToFloat();
-}
-
-LoadScriptValue::operator const ScriptChar* ()
-{
-	return this->ToStringPtrC();
-}
-
-bool			LoadScriptValue::ToBool()
+MXScriptBoolean				LoadScriptValue::ToBool()
 {
 	//如果错误或者为null,默认返回false
 	if(m_bError == true || m_bNull == true)
 	{ return false; }
 
-	ScriptString	text = m_Value;
+	MXScriptStringW	text = m_Value;
 	text.erase(remove_if(text.begin(), text.end(),   
-		std::bind2nd(std::equal_to<char>(), ' ')),   
+		std::bind2nd(std::equal_to<wchar_t>(), L' ')),   
 		text.end()); 
-	if(_tcsicmp(m_Value.c_str(), _T("1")) == 0 ||
-		_tcsicmp(m_Value.c_str(), _T("true")) == 0)
+
+	if(_wcsicmp(m_Value.c_str(), L"1") == 0 ||
+		_wcsicmp(m_Value.c_str(), L"true") == 0)
 	{
 		return true;
 	}
 	return false;
 }
 
-float			LoadScriptValue::ToFloat()
+MXScriptFloat			LoadScriptValue::ToFloat()
 {
 	//如果错误或者为null,默认返回false
 	if(m_bError == true || m_bNull == true)
 	{ return 0.0f; }
 
-	ScriptString	text = m_Value;
-	float result = (float)_tcstod(text.c_str(), NULL);
+	MXScriptStringW	text = m_Value;
+	MXScriptFloat result = (MXScriptFloat)wcstod(text.c_str(), NULL);
 	return result;
 }
 
-long			LoadScriptValue::ToSignedLongDec()
+MXScriptNumber			LoadScriptValue::ToNumber()
+{
+	//如果错误或者为null,默认返回false
+	if(m_bError == true || m_bNull == true)
+	{ return 0.0f; }
+
+	MXScriptStringW	text = m_Value;
+	MXScriptNumber result = (MXScriptNumber)wcstod(text.c_str(), NULL);
+	return result;
+}
+
+MXScriptInteger			LoadScriptValue::ToSignedDecimal()
 {
 	//如果错误或者为null,默认返回false
 	if(m_bError == true || m_bNull == true)
 	{ return 0; }
 
-	ScriptString	text	= m_Value;
-	long			result	= _tcstol(text.c_str(), NULL, 10);
+	MXScriptStringW		text	= m_Value;
+	MXScriptInteger		result	= (MXScriptInteger)wcstol(text.c_str(), NULL, 10);
 	return result;
 }
 
-long			LoadScriptValue::ToSignedLongHex()
+MXScriptUInteger			LoadScriptValue::ToUnsignedDecimal()
 {
 	//如果错误或者为null,默认返回false
 	if(m_bError == true || m_bNull == true)
 	{ return 0; }
 
-	ScriptString	text	= m_Value;
-	long			result	= _tcstol(text.c_str(), NULL, 16);
+	MXScriptStringW		text	= m_Value;
+	MXScriptUInteger	result	= (MXScriptUInteger)wcstoul(text.c_str(), NULL, 10);
 	return result;
 }
 
-unsigned long	LoadScriptValue::ToUnsignedLongDec()
+MXScriptInteger64			LoadScriptValue::ToSignedDecimal64()
 {
 	//如果错误或者为null,默认返回false
 	if(m_bError == true || m_bNull == true)
 	{ return 0; }
 
-	ScriptString	text = m_Value;
-	unsigned long result = _tcstoul(text.c_str(), NULL, 10);
+	MXScriptStringW		text	= m_Value;
+	MXScriptInteger		result	= (MXScriptInteger)_wcstoi64(text.c_str(), NULL, 10);
 	return result;
 }
 
-unsigned long	LoadScriptValue::ToUnsignedLongHex()
+MXScriptUInteger64			LoadScriptValue::ToUnsignedDecimal64()
 {
 	//如果错误或者为null,默认返回false
 	if(m_bError == true || m_bNull == true)
 	{ return 0; }
-	
-	ScriptString	text = m_Value;
-	unsigned long result = _tcstoul(text.c_str(), NULL, 16);
+
+	MXScriptStringW		text	= m_Value;
+	MXScriptUInteger	result	= (MXScriptUInteger)_wcstoui64(text.c_str(), NULL, 10);
 	return result;
 }
 
-const ScriptChar* LoadScriptValue::ToStringPtrC()
+MXScriptUInteger	LoadScriptValue::ToHexadecimal()
+{
+	//如果错误或者为null,默认返回false
+	if(m_bError == true || m_bNull == true)
+	{ return 0; }
+
+	MXScriptStringW		text	= m_Value;
+	MXScriptUInteger	result	= (MXScriptUInteger)wcstoul(text.c_str(), NULL, 16);
+	return result;
+}
+
+MXScriptUInteger64	LoadScriptValue::ToHexadecimal64()
+{
+	//如果错误或者为null,默认返回false
+	if(m_bError == true || m_bNull == true)
+	{ return 0; }
+
+	MXScriptStringW		text	= m_Value;
+	MXScriptUInteger	result	= (MXScriptUInteger)_wcstoui64(text.c_str(), NULL, 16);
+	return result;
+}
+
+const MXScriptCharW* LoadScriptValue::ToStringPtrUW()
 {
 	//如果错误或者为null,默认返回false
 	if(m_bError == true || m_bNull == true)
@@ -428,12 +462,57 @@ const ScriptChar* LoadScriptValue::ToStringPtrC()
 	return m_Value.c_str();
 }
 
-#ifdef LOADSCRIPT_USE_TIME
+const MXScriptCharA* LoadScriptValue::ToStringPtrUA()
+{
+	//如果错误或者为null,默认返回false
+	if(m_bError == true || m_bNull == true)
+	{ return NULL; }
+#if defined(_MSC_VER)
+	//进行UNICODE转ANSI
+	int		text_lengthA = WideCharToMultiByte(CP_ACP, 0, m_Value.c_str(), -1, NULL, 0, NULL, NULL);
+
+	char*	text_bufferA = new char[text_lengthA + 1];
+	text_lengthA = WideCharToMultiByte(CP_ACP, 0, m_Value.c_str(), -1, text_bufferA, text_lengthA, NULL, NULL);
+	text_bufferA[text_lengthA] = '\0';
+
+	//
+	m_ValueA = text_bufferA;
+	delete [] text_bufferA;
+	return m_ValueA.c_str();
+#else
+	return NULL;
+#endif
+}
+
+const MXScriptCharA* LoadScriptValue::ToStringPtrU8()
+{
+	//如果错误或者为null,默认返回false
+	if(m_bError == true || m_bNull == true)
+	{ return NULL; }
+#if defined(_MSC_VER)
+	//进行UNICODE转ANSI
+	int		text_lengthA = WideCharToMultiByte(CP_UTF8, 0, m_Value.c_str(), -1, NULL, 0, NULL, NULL);
+
+	char*	text_bufferA = new char[text_lengthA + 1];
+	text_lengthA = WideCharToMultiByte(CP_UTF8, 0, m_Value.c_str(), -1, text_bufferA, text_lengthA, NULL, NULL);
+	text_bufferA[text_lengthA] = '\0';
+
+	//
+	m_ValueA = text_bufferA;
+	delete [] text_bufferA;
+	return m_ValueA.c_str();
+#else
+	return NULL;
+#endif
+}
+
+
+#ifdef _MX_LOADSCRIPT_USE_TIME_
 
 LoadScriptTime		LoadScriptValue::StampTimeToTime10()
 {
 	LoadScriptTime		time;
-	unsigned __int64	value	= this->ToUnsignedLongDec();
+	MXScriptUInteger64	value	= this->ToUnsignedDecimal64();
 
 	tm			t		= {0};
 	localtime_s(&t, (time_t*)&value);
@@ -450,7 +529,7 @@ LoadScriptTime		LoadScriptValue::StampTimeToTime10()
 LoadScriptTime		LoadScriptValue::StampTimeToTime16()
 {
 	LoadScriptTime		time;
-	unsigned __int64	value	= this->ToUnsignedLongHex();
+	MXScriptUInteger64	value	= this->ToHexadecimal64();
 
 	tm			t		= {0};
 	localtime_s(&t, (time_t*)&value);
@@ -464,15 +543,17 @@ LoadScriptTime		LoadScriptValue::StampTimeToTime16()
 	return time;
 }
 
-#endif // LOADSCRIPT_USE_TIME
+#endif // _MX_LOADSCRIPT_USE_TIME_
+
 
 //
 bool		LoadScript::Next(LoadScriptCacheLineT& cache_line)
 {
-	if(m_pStream == NULL){ return false; }
+	if(m_pStream == NULL || m_pStream->m_pLines == NULL)
+	{ return false; }
 
 	long	row		= cache_line.m_lRow;
-	if(!m_pStream->LineText(row, cache_line.m_stringText))
+	if(!m_pStream->m_pLines->LineText(row, cache_line.m_stringText))
 	{
 		return false;
 	}
@@ -487,11 +568,12 @@ bool		LoadScript::Next(LoadScriptCacheLineT& cache_line)
 
 bool		LoadScript::Next(LoadScriptCacheLineTH& cache_line)
 {
-	if(m_pStream == NULL){ return false; }
+	if(m_pStream == NULL || m_pStream->m_pLines == NULL)
+	{ return false; }
 
 	if(cache_line.m_lColumnCount == 0)
 	{
-		if(!cache_line.LineText(m_pStream))
+		if(!cache_line.LineText(m_pStream->m_pLines))
 		{
 			return false;
 		}
@@ -502,7 +584,7 @@ bool		LoadScript::Next(LoadScriptCacheLineTH& cache_line)
 		}
 	}
 
-	if(!cache_line.LineText(m_pStream))
+	if(!cache_line.LineText(m_pStream->m_pLines))
 	{
 		return false;
 	}
@@ -513,8 +595,6 @@ bool		LoadScript::Next(LoadScriptCacheLineTH& cache_line)
 	}
 	return true;
 }
-
-*/
 
 //
 } //namespace MX

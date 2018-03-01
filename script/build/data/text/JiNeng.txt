@@ -1,0 +1,9 @@
+//技能ID	技能名		技能类型（0，普通技能 1，增益技能  2，被动技能  3，大招，4，坐骑技能  5）	技能职业类型（0，全职业 1，战士  2，法师  3，枪手）	技能图标	技能说明	技能伤害百分比	技能附加伤害	技能CD时间	是否可升级（0，不可以  1，可以）	升级消耗金币	升级消耗道具ID	升级消耗道具数量	技能动作	释放距离	技能最大攻击距离	单次技能最大攻击数量	单个怪物最大攻击次数	攻击追加伤害	单个怪物最大承受攻击次数	伤害时间
+id	name		type	class	icon	des	damageRate	damageAdd	cd	canLevelup	useMoney	itemid	itemCount	act	distance	hitDistance	hitMaxCount	singleMaxCount	addhit	maxHitCount	damageTime
+10003				1									12	2	2	3	3	4	2	243	
+10004													44	1	2	3	43	2	3	4	
+10005													243	4	2	34	4	23	4	2	
+10006													4	4	32	4	2	4	3	24	500
+//这里是测试注释																					
+10007													223								
+10008																					
