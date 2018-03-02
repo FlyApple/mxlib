@@ -529,11 +529,14 @@ public:
 	{
 		return this->ValueByIndex(index);
 	}
-
+	__inline LoadScriptValue	operator[] (const MXScriptCharA* name)
+	{
+		return this->ValueByName(index);
+	}
 	__inline LoadScriptValue	ValueByName (const MXScriptCharA* name)
 	{
 		LoadScriptValue	result;
-		if(!m_pPointer->ColumnTextByName(name, result.m_Value))
+		if(!m_pPointer->TextByColumnName(name, result.m_Value))
 		{ 
 			result.m_bError = true;
 			return result; 
@@ -550,7 +553,7 @@ public:
 	__inline LoadScriptValue	ValueByIndex (MXScriptInteger index)
 	{
 		LoadScriptValue	result;
-		if(!m_pPointer->ValueText(index, result.m_Value))
+		if(!m_pPointer->TextByColumnIndex(index, result.m_Value))
 		{ 
 			result.m_bError = true;
 			return result; 
